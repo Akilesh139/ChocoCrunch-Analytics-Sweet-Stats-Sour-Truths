@@ -7,21 +7,21 @@ The project focuses on:
 
 Data Integration
 
-Using pandas to preprocess raw nutrition data.
+1) Using pandas to preprocess raw nutrition data.
 
-Handling missing values, duplicates, and derived metrics.
+2) Handling missing values, duplicates, and derived metrics.
 
 Database Management
 
-SQLite database (Choco_Crunch.db) created with three normalized tables:
+1) SQLite database (Choco_Crunch.db) created with three normalized tables:
 
-product_info – Product metadata (code, name, brand).
+2) product_info – Product metadata (code, name, brand).
 
-nutrient_info – Nutritional values (calories, sugars, fats, proteins, etc.).
+3) nutrient_info – Nutritional values (calories, sugars, fats, proteins, etc.).
 
-derived_metrics – Calculated metrics (sugar-to-carb ratio, categories, ultra-processed flag).
+4) derived_metrics – Calculated metrics (sugar-to-carb ratio, categories, ultra-processed flag).
 
-SQL Queries
+# SQL Queries
 
 Performed basic to advanced SQL analysis:
 
@@ -33,7 +33,7 @@ High calorie & high sugar product identification.
 
 Products with nutrient thresholds (e.g., sodium > 1g).
 
-Exploratory Data Analysis (EDA)
+# Exploratory Data Analysis (EDA)
 
 Used Matplotlib/Seaborn to create:
 
@@ -43,8 +43,8 @@ Category-wise distributions (calorie, sugar, fiber).
 
 Correlation analysis of nutritional fields.
 
-Power BI Dashboards
-Built 10+ interactive visualizations, including:
+# Power BI Dashboards
+Built 8 interactive visualizations, including:
 
 Product count by calorie/sugar categories.
 
@@ -58,10 +58,10 @@ KPIs for total products, unique brands, and % ultra-processed.
 
 🛠️ Tech Stack
 
-Language: Python (Pandas, Matplotlib, Seaborn, SQLite3)
+* Language: Python (Pandas, Matplotlib, Seaborn, SQLite3)
 
-Database: SQLite (Choco_Crunch.db)
+* Database: SQLite (Choco_Crunch.db)
 
-Visualization: Power BI
+* Visualization: Power BI
 
-Data Export: CSV (for Power BI ingestion)
+* Data Export: CSV (for Power BI ingestion)
