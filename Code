@@ -1,0 +1,623 @@
+import requests 
+import pandas as pd
+import numpy as np
+
+all_products = []
+
+for page in range(1, 121):
+    url = f"https://world.openfoodfacts.org/api/v2/search?categories=chocolates&fields=code,product_name,brands,nutriments&page_size=100&page={page}"
+    response = requests.get(url)
+    data = response.json()
+    products = data.get("products", [])
+    all_products.extend(products)
+
+print("Total products collected:", len(all_products))
+
+df = pd.DataFrame(all_products)
+df
+
+df['nutriments'][0]
+
+
+fields=["energy-kcal_value","energy-kj_value","carbohydrates_value","sugars_value","fat_value","saturated-fat_value","proteins_value","fiber_value",
+"salt_value",
+"sodium_value",
+"nova-group",
+"nutrition-score-fr",
+"fruits-vegetables-nuts-estimate-from-ingredients_100g"]
+
+# Extract only the specified 10 fields
+for field in fields:
+    df[field] = df["nutriments"].apply(lambda x: x.get(field) if isinstance(x, dict) else None)
+
+print(df[fields].head())
+
+Nutrition = pd.DataFrame(df[fields])
+Nutrition
+
+final_df = df.drop(columns=["nutriments"])
+final_df
+
+final_df.isnull().sum()
+
+nutr_cols = [
+    "energy-kcal_value","energy-kj_value","carbohydrates_value","sugars_value",
+    "fat_value","saturated-fat_value","proteins_value","fiber_value",
+    "salt_value","sodium_value","nova-group","nutrition-score-fr",
+    "fruits-vegetables-nuts-estimate-from-ingredients_100g"
+]
+
+for col in nutr_cols:
+    final_df[col] = final_df[col].fillna(final_df[col].median())
+final_df = final_df.dropna()
+final_df.isnull().sum()
+
+final_df.duplicated().sum()
+final_df = final_df.drop_duplicates()
+final_df.duplicated().sum()
+final_df
+
+final_df["sugar_to_carb_ratio"] = final_df.apply(
+    lambda row: row["sugars_value"] / row["carbohydrates_value"]
+    if row["carbohydrates_value"] not in [0, None, np.nan] else np.nan, axis=1
+)
+final_df
+
+final_df["sugar_to_carb_ratio"]=final_df["sugar_to_carb_ratio"].fillna(final_df["sugar_to_carb_ratio"].median())
+
+# getting the values for calorie_category 
+def calorie_cat(kcal):
+    if pd.isna(kcal):
+        return "Unknown"
+    elif kcal < 100:
+        return "Low"
+    elif kcal <= 300:
+        return "Moderate"
+    else:
+        return "High"
+
+final_df["calorie_category"] = final_df["energy-kcal_value"].apply(calorie_cat)
+
+#Getting the values for sugar_category
+def sugar_cat(sugar):
+    if pd.isna(sugar):
+        return "Unknown"
+    elif sugar < 5:
+        return "Low Sugar"
+    elif sugar <= 15:
+        return "Moderate Sugar"
+    else:
+        return "High Sugar"
+
+final_df["sugar_category"] = final_df["sugars_value"].apply(sugar_cat)
+
+#getting the values for ultra_processed
+final_df["is_ultra_processed"] = final_df["nova-group"].apply(
+    lambda x: "Yes" if x == 4 else ("No" if pd.notna(x) else "Unknown")
+)
+
+final_df.isnull().sum()
+
+#EDA
+
+final_df[['energy-kcal_value', 'sugars_value', 'carbohydrates_value', 'sugar_to_carb_ratio']].describe()
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Bar chart for the Avg sugar content in the products
+
+avg_sugar = final_df.groupby("sugar_category")["sugars_value"].mean()
+
+avg_sugar.plot(kind="bar", color="skyblue", figsize=(6,4))
+plt.ylabel("Average Sugar (per 100g)")
+plt.xlabel("Sugar Category")
+plt.title("Average Sugar Content by Sugar Category")
+plt.xticks(rotation=0)
+plt.show()
+
+# Bar chart for calorie_category
+
+plt.figure(figsize=(6,4))
+final_df["calorie_category"].value_counts().plot(kind="bar", color=["grey","purple","yellow"])
+plt.title("Number of Products by Calorie Category")
+plt.xlabel("Calorie Category")
+plt.ylabel("Number of Products")
+plt.show()
+
+#Pie Char for Proportion of Products by NOVA Group
+
+nova_counts = final_df["nova-group"].value_counts()
+colors = ["red", "blue", "yellow", "pink"]
+
+# Pie chart
+plt.figure(figsize=(6,6))
+plt.pie(
+    nova_counts,
+    labels=nova_counts.index,
+    autopct="%1.1f%%",   # show percentages
+    colors=colors  
+)
+plt.title("Proportion of Products by NOVA Group")
+plt.show()
+
+#Correlation Heatmap of Nutritional Values
+
+# Select only numerical columns
+numeric_df = final_df.select_dtypes(include=['number'])
+
+# Compute correlation matrix
+corr_matrix = numeric_df.corr()
+
+# Plot heatmap
+plt.figure(figsize=(10,8))
+sns.heatmap(
+    corr_matrix,
+    annot=True,        # Show correlation values
+    fmt=".2f",         # Format correlation values
+    cbar=True
+)
+plt.title("Correlation Heatmap of Nutritional Values")
+plt.show()
+
+#Top 10 Brands by Average Calories
+
+# Group by brand and calculate average calories
+top_calorie_brands = (
+    final_df.groupby("brands")["energy-kcal_value"]
+      .mean()
+      .sort_values(ascending=False)
+      .head(10)
+)
+
+# Plot
+plt.figure(figsize=(10,6))
+sns.barplot(x=top_calorie_brands.values, y=top_calorie_brands.index, palette="Greens_r")
+
+plt.title("Top 10 Brands by Average Calories")
+plt.xlabel("Average Calories (kcal)")
+plt.ylabel("Brands")
+plt.show()
+
+#Shows the number of ultra processed items in each category.
+
+sns.countplot(x="is_ultra_processed", data=final_df, palette=["green","red"])
+
+# Scatter plot
+plt.figure(figsize=(6,4))
+plt.scatter(final_df["carbohydrates_value"], final_df["sugars_value"], color="purple", alpha=0.5)
+
+plt.xlabel("Carbohydrates (g per 100g)")
+plt.ylabel("Sugars (g per 100g)")
+plt.title("Sugars vs Carbohydrates")
+plt.show()
+
+# Create fiber bins
+bins = [0, 5, 10, 15, 20, 30, 40, 50, 60, 100]
+labels = ["0-5","6-10","11-15","16-20","21-30","31-40","41-50","51-60","60+"]
+
+final_df["fiber_bin"] = pd.cut(final_df["fiber_value"], bins=bins, labels=labels, include_lowest=True)
+
+# Calculate average sugar per fiber bin
+avg_sugar_bin = final_df.groupby("fiber_bin")["sugars_value"].mean()
+
+# Plot
+plt.figure(figsize=(8,4))
+avg_sugar_bin.plot(kind="bar", color="orange")
+plt.xlabel("Fiber Range (g per 100g)")
+plt.ylabel("Average Sugar (g per 100g)")
+plt.title("Average Sugar per Fiber Bin")
+plt.show()
+
+#SQL
+
+import sqlite3
+
+# Connect to SQLite
+conn = sqlite3.connect("Choco_Crunch.db")
+cursor = conn.cursor()
+
+#  Create Tables
+
+# product_info table
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS product_info (
+    product_code TEXT PRIMARY KEY,
+    product_name TEXT,
+    brand TEXT
+)
+""")
+
+# nutrient_info table
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS nutrient_info (
+    product_code TEXT PRIMARY KEY,
+    energy_kcal_value FLOAT,
+    energy_kj_value FLOAT,
+    carbohydrates_value FLOAT,
+    sugars_value FLOAT,
+    fat_value FLOAT,
+    saturated_fat_value FLOAT,
+    proteins_value FLOAT,
+    fiber_value FLOAT,
+    salt_value FLOAT,
+    sodium_value FLOAT,
+    fruits_vegetables_nuts_estimate_from_ingredients_100g FLOAT,
+    nutrition_score_fr INTEGER,
+    nova_group INTEGER,
+    FOREIGN KEY(product_code) REFERENCES product_info(product_code)
+)
+""")
+
+# derived_metrics table
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS derived_metrics (
+    product_code TEXT PRIMARY KEY,
+    sugar_to_carb_ratio FLOAT,
+    calorie_category TEXT,
+    sugar_category TEXT,
+    is_ultra_processed TEXT,
+    FOREIGN KEY(product_code) REFERENCES product_info(product_code)
+)
+""")
+conn.commit()
+
+#  Insert Data 
+
+# product_info data
+product_data = final_df[["code","product_name","brands"]].drop_duplicates()
+product_tuples = [tuple(x) for x in product_data.values]
+cursor.executemany("""
+INSERT OR IGNORE INTO product_info (product_code, product_name, brand)
+VALUES (?,?,?)
+""", product_tuples)
+
+# nutrient_info data
+nutrient_columns = [
+    "energy-kcal_value","energy-kj_value","carbohydrates_value","sugars_value","fat_value",
+    "saturated-fat_value","proteins_value","fiber_value","salt_value","sodium_value",
+    "fruits-vegetables-nuts-estimate-from-ingredients_100g","nutrition-score-fr","nova-group"
+]
+
+nutrient_tuples = [
+    tuple([row["code"]] + [row[col] for col in nutrient_columns])
+    for _, row in final_df.iterrows()
+]
+cursor.executemany("""
+INSERT OR REPLACE INTO nutrient_info (
+    product_code, energy_kcal_value, energy_kj_value, carbohydrates_value, sugars_value,
+    fat_value, saturated_fat_value, proteins_value, fiber_value, salt_value, sodium_value,
+    fruits_vegetables_nuts_estimate_from_ingredients_100g, nutrition_score_fr, nova_group
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+""", nutrient_tuples)
+
+# derived_metrics data
+derived_data = final_df[[
+    "code", "sugar_to_carb_ratio", "calorie_category",
+    "sugar_category", "is_ultra_processed"
+]].drop_duplicates()
+derived_tuples = [tuple(x) for x in derived_data.values]
+cursor.executemany("""
+INSERT OR REPLACE INTO derived_metrics (
+    product_code, sugar_to_carb_ratio, calorie_category, sugar_category, is_ultra_processed
+) VALUES (?,?,?,?,?)
+""", derived_tuples)
+
+conn.commit()
+conn.close()
+
+
+conn = sqlite3.connect("Choco_Crunch.db")
+cursor = conn.cursor()
+tables = ["product_info", "nutrient_info", "derived_metrics"]
+
+for table in tables:
+    cursor.execute(f"SELECT COUNT(*) FROM {table}")
+    count = cursor.fetchone()[0]
+    print(f"Table '{table}' has {count} records.")
+
+df_total = pd.read_sql_query("SELECT COUNT(*) AS total_products FROM product_info;", conn)
+print(df_total)
+
+# 1.Count products per brand
+brand_counts = pd.read_sql_query("""
+    SELECT brand, COUNT(*) AS product_count
+    FROM product_info
+    GROUP BY brand
+    ORDER BY product_count ASC
+""", conn)
+
+print(brand_counts) 
+
+# 2.Count unique products per brand
+unique_prodt = pd.read_sql_query("""
+SELECT brand, COUNT(DISTINCT product_code) AS unique_products
+FROM product_info
+GROUP BY brand
+ORDER BY unique_products DESC;
+""",conn)
+
+print(unique_prodt)
+
+# 3.Top 5 brands
+query = """
+SELECT brand, COUNT(product_code) AS product_count
+FROM product_info
+GROUP BY brand
+ORDER BY product_count DESC
+LIMIT 5;
+"""
+df = pd.read_sql_query(query, conn)
+
+print(df)
+
+# 4. Products with missing product name
+query = """
+SELECT *
+FROM product_info
+WHERE product_name IS NULL OR product_name = '';
+"""
+df = pd.read_sql_query(query, conn)
+
+print(df)
+
+# 5.Number of unique brands
+query = "SELECT COUNT(DISTINCT brand) AS unique_brands FROM product_info;"
+df = pd.read_sql_query(query, conn)
+
+print(df)
+
+# 6.Products with code starting with '3'
+
+query = "SELECT * FROM product_info WHERE product_code LIKE '3%';"
+df = pd.read_sql_query(query, conn)
+
+print(df.head())
+
+# nutrient_info
+# 1.Top 10 products with highest energy-kcal_value
+query = """
+SELECT product_code, "energy_kcal_value"
+FROM nutrient_info
+ORDER BY "energy_kcal_value" DESC
+LIMIT 10;
+"""
+df = pd.read_sql_query(query, conn)
+
+print(df)
+
+# 2. Average sugars_value per nova-group
+query = """
+SELECT nova_group, AVG(sugars_value) AS avg_sugars
+FROM nutrient_info
+GROUP BY nova_group
+ORDER BY nova_group;
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# 3.Count products with fat_value > 20g
+query = """
+SELECT COUNT(*) AS high_fat_products
+FROM nutrient_info
+WHERE fat_value > 20;
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# 4.Average carbohydrates_value per product
+query = """
+SELECT AVG(carbohydrates_value) AS avg_carbohydrates
+FROM nutrient_info;
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# 5.Products with sodium_value > 1g
+query = """
+SELECT product_code, sodium_value
+FROM nutrient_info
+WHERE sodium_value > 1;
+"""
+df = pd.read_sql_query(query, conn)
+print(df.head(10))  # show first 10
+
+conn.close()
+
+# 6.Count products with non-zero fruits-vegetables-nuts content
+conn = sqlite3.connect("Choco_Crunch.db")
+cursor = conn.cursor()
+query = """
+SELECT COUNT(*) AS non_zero_fvn_products
+FROM nutrient_info
+WHERE fruits_vegetables_nuts_estimate_from_ingredients_100g > 0;
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# 7.Products with energy-kcal_value > 500
+query = """
+SELECT product_code, energy_kcal_value
+FROM nutrient_info
+WHERE energy_kcal_value > 500;
+"""
+df = pd.read_sql_query(query, conn)
+print(df.head(10))  
+
+# derived_metrics
+# 1.Count products per calorie_category
+query = """
+SELECT calorie_category, COUNT(*) AS product_count
+FROM derived_metrics
+GROUP BY calorie_category;
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# 2. Count of High Sugar products
+query = """
+SELECT COUNT(*) AS high_sugar_products
+FROM derived_metrics
+WHERE sugar_category = 'High Sugar';
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# 3.Average sugar_to_carb_ratio for High Calorie products
+query = """
+SELECT AVG(sugar_to_carb_ratio) AS avg_sugar_to_carb_ratio
+FROM derived_metrics
+WHERE calorie_category = 'High';
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# 4. Products that are both High Calorie and High Sugar
+query = """
+SELECT product_code, calorie_category, sugar_category
+FROM derived_metrics
+WHERE calorie_category = 'High'
+  AND sugar_category = 'High Sugar';
+"""
+df = pd.read_sql_query(query, conn)
+print(df.head(10))  # show first 10
+
+# 5. Number of products marked as ultra-processed
+query = """
+SELECT COUNT(*) AS ultra_processed_products
+FROM derived_metrics
+WHERE is_ultra_processed = 'Yes';
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# 6. Products with sugar_to_carb_ratio > 0.7
+query = """
+SELECT product_code, sugar_to_carb_ratio
+FROM derived_metrics
+WHERE sugar_to_carb_ratio > 0.7;
+"""
+df = pd.read_sql_query(query, conn)
+print(df.head(10))
+
+# 7. Average sugar_to_carb_ratio per calorie_category
+query = """
+SELECT calorie_category, AVG(sugar_to_carb_ratio) AS avg_sugar_to_carb_ratio
+FROM derived_metrics
+GROUP BY calorie_category
+ORDER BY calorie_category;
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# Join Queries
+# 1.Top 5 brands with most High Calorie products
+query = """
+SELECT p.brand, COUNT(*) AS high_calorie_count
+FROM derived_metrics d
+JOIN product_info p
+  ON d.product_code = p.product_code
+WHERE d.calorie_category = 'High'
+GROUP BY p.brand
+ORDER BY high_calorie_count DESC
+LIMIT 5;
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# 2.Average energy_kcal_value for each calorie_category
+query = """
+SELECT d.calorie_category, AVG(n.energy_kcal_value) AS avg_energy_kcal
+FROM derived_metrics d
+JOIN nutrient_info n
+  ON d.product_code = n.product_code
+GROUP BY d.calorie_category
+ORDER BY d.calorie_category;
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# 3.Count of ultra-processed products per brand
+query = """
+SELECT p.brand, COUNT(*) AS ultra_processed_count
+FROM derived_metrics d
+JOIN product_info p
+  ON d.product_code = p.product_code
+WHERE d.is_ultra_processed = 'Yes'
+GROUP BY p.brand
+ORDER BY ultra_processed_count DESC;
+"""
+df = pd.read_sql_query(query, conn)
+print(df.head(10)) 
+
+# 4.Products with High Sugar and High Calorie along with brand
+query = """
+SELECT p.product_code, p.product_name, p.brand, d.calorie_category, d.sugar_category
+FROM derived_metrics d
+JOIN product_info p
+  ON d.product_code = p.product_code
+WHERE d.calorie_category = 'High'
+  AND d.sugar_category = 'High Sugar';
+"""
+df = pd.read_sql_query(query, conn)
+print(df.head(10))
+
+# 5.Average sugar content per brand for ultra-processed products
+query = """
+SELECT p.brand, AVG(n.sugars_value) AS avg_sugars
+FROM derived_metrics d
+JOIN nutrient_info n
+  ON d.product_code = n.product_code
+JOIN product_info p
+  ON d.product_code = p.product_code
+WHERE d.is_ultra_processed = 'Yes'
+GROUP BY p.brand
+ORDER BY avg_sugars DESC;
+"""
+df = pd.read_sql_query(query, conn)
+print(df.head(10)) 
+
+# 6.Number of products with fruits/vegetables/nuts content in each calorie_category
+query = """
+SELECT d.calorie_category, COUNT(*) AS fvn_product_count
+FROM derived_metrics d
+JOIN nutrient_info n
+  ON d.product_code = n.product_code
+WHERE n.fruits_vegetables_nuts_estimate_from_ingredients_100g > 0
+GROUP BY d.calorie_category
+ORDER BY d.calorie_category;
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+# 7.Top 5 products by sugar_to_carb_ratio with their calorie and sugar category
+query = """
+SELECT product_code, sugar_to_carb_ratio, calorie_category, sugar_category
+FROM derived_metrics
+ORDER BY sugar_to_carb_ratio DESC
+LIMIT 5;
+"""
+df = pd.read_sql_query(query, conn)
+print(df)
+
+conn.close()
+
+# Transforming the SQlite DB to CSV
+import sqlite3
+import pandas as pd
+
+conn = sqlite3.connect("Choco_Crunch.db")
+
+# export product_info
+df = pd.read_sql_query("SELECT * FROM product_info", conn)
+df.to_csv(r"C:\CSV Files\product_info.csv", index=False)
+
+# export nutrient_info
+df2 = pd.read_sql_query("SELECT * FROM nutrient_info", conn)
+df2.to_csv(r"C:\CSV Files\nutrient_info.csv", index=False)
+
+# export nutrient_info
+df3 = pd.read_sql_query("SELECT * FROM derived_metrics", conn)
+df3.to_csv(r"C:\CSV Files\derived_metrics.csv", index=False)
+
+conn.close()
