@@ -1,7 +1,7 @@
 # ChocoCrunch-Analytics-Sweet-Stats-Sour-Truths
 This project integrates nutrition datasets into a structured SQLite database, explores them with SQL + Pandas, and builds Power BI dashboards for visualization and storytelling.
 
-📌 Project Overview
+# 📌 Project Overview
 
 The project focuses on:
 
@@ -56,7 +56,7 @@ Top 10 brands by product count.
 
 KPIs for total products, unique brands, and % ultra-processed.
 
-🛠️ Tech Stack
+# 🛠️ Tech Stack
 
 * Language: Python (Pandas, Matplotlib, Seaborn, SQLite3)
 
